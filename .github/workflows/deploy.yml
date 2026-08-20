@@ -1,0 +1,93 @@
+name: Deploy wallet portal to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+env:
+  VITE_API_URL: ${{ vars.VITE_API_URL }}
+  VITE_SIGNER_URL: ${{ vars.VITE_SIGNER_URL }}
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Validate deployment configuration
+        shell: bash
+        run: |
+          if [ -z "$VITE_API_URL" ]; then
+            echo "::error::Repository variable VITE_API_URL is required. Add it under Settings > Secrets and variables > Actions > Variables."
+            exit 1
+          fi
+          if [[ "$VITE_API_URL" != https://* ]]; then
+            echo "::error::VITE_API_URL must be an HTTPS URL when deployed on GitHub Pages."
+            exit 1
+          fi
+          if [ -n "$VITE_SIGNER_URL" ] && [[ "$VITE_SIGNER_URL" != https://* ]]; then
+            echo "::error::VITE_SIGNER_URL must use HTTPS when configured."
+            exit 1
+          fi
+
+      - name: Determine GitHub Pages base path
+        shell: bash
+        run: |
+          REPO_NAME="${GITHUB_REPOSITORY#*/}"
+          if [ "$REPO_NAME" = "${GITHUB_REPOSITORY_OWNER}.github.io" ]; then
+            echo "VITE_BASE_PATH=/" >> "$GITHUB_ENV"
+            echo "Using Pages base path /"
+          else
+            echo "VITE_BASE_PATH=/$REPO_NAME/" >> "$GITHUB_ENV"
+            echo "Using Pages base path /$REPO_NAME/"
+          fi
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build Vite application
+        run: npm run build
+
+      - name: Verify production artifact
+        shell: bash
+        run: |
+          test -f dist/index.html
+          if grep -q '/src/main.tsx' dist/index.html; then
+            echo "::error::dist/index.html still references the Vite source entrypoint. The production build is invalid."
+            exit 1
+          fi
+          echo "Production index references:"
+          grep -oE '(src|href)="[^"]+"' dist/index.html || true
+          touch dist/.nojekyll
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: ./dist
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

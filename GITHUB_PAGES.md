@@ -1,103 +1,40 @@
-# GitHub Pages deployment
+# GitHub Pages setup
 
-The wallet portal/admin frontend is a static Vite application and can be hosted directly on GitHub Pages. The API, indexer, database, Redis and signer are still backend services and must run somewhere else (Railway, Fly.io, AWS, etc.).
+This is a Vite application. GitHub Pages must publish the compiled `dist/` directory produced by GitHub Actions. Do not configure Pages to publish the repository root or `main` branch directly.
 
-## 1. Push the repository to GitHub
+## Required GitHub settings
 
-The repository includes `.github/workflows/deploy.yml`. It builds the frontend and publishes `dist` to GitHub Pages whenever `main` changes.
+1. Open the frontend repository.
+2. Go to `Settings -> Secrets and variables -> Actions -> Variables`.
+3. Add `VITE_API_URL` with the public HTTPS Railway API URL, for example `https://your-api.up.railway.app`.
+4. Leave `VITE_SIGNER_URL` unset unless you intentionally expose a devnet-only signer endpoint over HTTPS.
+5. Go to `Settings -> Pages`.
+6. Under `Build and deployment`, set `Source` to **GitHub Actions**.
+7. Go to `Actions -> Deploy wallet portal to GitHub Pages` and run the workflow, or push a commit to `main`.
 
-## 2. Configure the public backend URL
+The workflow determines the correct Vite base automatically:
 
-In the GitHub repository, open:
+- `https://username.github.io/` -> `/`
+- `https://username.github.io/repository-name/` -> `/repository-name/`
 
-`Settings -> Secrets and variables -> Actions -> Variables`
+## How to tell it is deployed correctly
 
-Create:
+The production page must load compiled files such as:
 
-- `VITE_API_URL` (required): the public HTTPS URL of the Fastify API, for example `https://api.example.com`.
-- `VITE_SIGNER_URL` (optional): only needed for the current devnet-only direct private-key import flow. Do not expose the development signer publicly for a mainnet deployment.
+`/repository-name/assets/index-xxxxx.js`
 
-These are public frontend configuration values, not secrets. Never put `ADMIN_PASSWORD`, `JWT_SECRET`, `ROBLOX_SHARED_SECRET`, `SIGNER_SHARED_SECRET`, private keys, database credentials or RPC secrets into a `VITE_*` variable. Vite embeds `VITE_*` values into the browser bundle.
+It must not request:
 
-## 3. Enable GitHub Pages
+`/src/main.tsx`
 
-Open:
+If DevTools shows `main.tsx 404`, GitHub Pages is publishing your source repository instead of the GitHub Actions artifact. Re-check `Settings -> Pages -> Source -> GitHub Actions`.
 
-`Settings -> Pages`
+## Backend CORS
 
-Set **Source** to **GitHub Actions**.
-
-Then either push to `main` or run `Deploy wallet portal to GitHub Pages` manually from the Actions tab.
-
-The Vite build uses relative asset paths, so no repository-name configuration is required. It works for both:
-
-- `https://username.github.io/`
-- `https://username.github.io/repository-name/`
-
-The admin page uses hash routing and is available at:
-
-`https://your-pages-url/#admin`
-
-That avoids GitHub Pages SPA refresh/404 problems.
-
-## 4. Allow the GitHub Pages origin in the API
-
-The API must allow the exact Pages origin in `PORTAL_ORIGINS`.
-
-For a project Pages URL such as:
-
-`https://username.github.io/repository-name/`
-
-use the browser origin only (no path):
-
-```env
-PORTAL_ORIGINS=https://username.github.io
-```
-
-For local development plus Pages:
+If your Pages URL is `https://username.github.io/repository-name/`, the Railway API should include this browser origin:
 
 ```env
 PORTAL_ORIGINS=http://localhost:3000,https://username.github.io
 ```
 
-Restart/redeploy the API after changing it.
-
-If the devnet import flow is intentionally exposed, the signer also needs the same origin:
-
-```env
-SIGNER_IMPORT_ORIGINS=https://username.github.io
-```
-
-Again, the direct signer import endpoint is not intended to be exposed as a production mainnet key-management service.
-
-## 5. What GitHub Pages hosts
-
-GitHub Pages hosts only:
-
-- React wallet portal
-- Phantom/Solflare connection UI
-- wallet management UI
-- portfolio UI
-- admin/debug UI
-
-It does **not** host:
-
-- Fastify API
-- PostgreSQL
-- Redis
-- Solana indexer
-- signing service
-
-Those stay on the backend host and the frontend connects to the API over HTTPS.
-
-## Updating the site
-
-After setup, normal updates are just:
-
-```bash
-git add .
-git commit -m "Update wallet portal"
-git push origin main
-```
-
-GitHub Actions rebuilds and redeploys the site automatically.
+CORS origins do not include `/repository-name/`.
