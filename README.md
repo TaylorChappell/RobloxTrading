@@ -41,5 +41,3 @@ The admin UI is available at `https://your-pages-url/#admin`.
 See `GITHUB_PAGES.md` for CORS and deployment details.
 
 ## Security
-
-All `VITE_*` variables are public browser configuration. Never put database credentials, JWT secrets, admin passwords, Roblox shared secrets, signer secrets or private keys in them.
